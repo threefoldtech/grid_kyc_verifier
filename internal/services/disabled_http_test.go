@@ -2,6 +2,7 @@ package services_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -78,6 +79,14 @@ func TestDisabledModeHTTP(t *testing.T) {
 	t.Run("status by twin_id is 200 VERIFIED", func(t *testing.T) {
 		substrateClient.On("GetAddressByTwinID", uint32(7)).Return(httpClientID, nil).Once()
 		code, body := do(t, "GET", "/api/v1/status?twin_id=7")
+		assert.Equal(t, fiber.StatusOK, code)
+		assert.Equal(t, "VERIFIED", result(t, body)["status"])
+	})
+
+	// ZOS nodes and the Go grid client need 200 and status VERIFIED.
+	t.Run("status by twin_id is 200 VERIFIED when the chain lookup fails", func(t *testing.T) {
+		substrateClient.On("GetAddressByTwinID", uint32(999)).Return("", fmt.Errorf("chain unavailable")).Once()
+		code, body := do(t, "GET", "/api/v1/status?twin_id=999")
 		assert.Equal(t, fiber.StatusOK, code)
 		assert.Equal(t, "VERIFIED", result(t, body)["status"])
 	})

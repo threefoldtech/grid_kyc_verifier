@@ -205,6 +205,12 @@ func (s *KYCService) GetVerificationStatus(ctx context.Context, clientID string)
 func (s *KYCService) GetVerificationStatusByTwinID(ctx context.Context, twinID uint32) (*models.VerificationOutcome, error) {
 	// get the address from the twinID
 	address, err := s.substrate.GetAddressByTwinID(twinID)
+	if err != nil && s.config.Disabled {
+		// ZOS nodes and the Go grid client ask by twin ID before every deployment
+		// and read only the status, so a chain hiccup here must not block them.
+		s.logger.Warn("KYC is disabled: reporting twin as verified although its address lookup failed", "twinID", twinID, "error", err)
+		return s.GetVerificationStatus(ctx, "")
+	}
 	if err != nil {
 		s.logger.Error("Error getting address from twinID", "twinID", twinID, "error", err)
 		return nil, errors.NewExternalError("looking up twinID address from TFChain", err)

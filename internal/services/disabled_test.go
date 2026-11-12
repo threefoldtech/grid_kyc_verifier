@@ -56,16 +56,17 @@ func TestDisabledMode(t *testing.T) {
 		substrateClient.AssertExpectations(t)
 	})
 
-	t.Run("status by twin ID still fails when the chain lookup fails", func(t *testing.T) {
+	t.Run("status by twin ID reports verified even when the chain lookup fails", func(t *testing.T) {
 		service, _, _, substrateClient := setup(t)
-		substrateClient.On("GetAddressByTwinID", uint32(999)).Return("", fmt.Errorf("twin not found")).Once()
+		substrateClient.On("GetAddressByTwinID", uint32(999)).Return("", fmt.Errorf("chain unavailable")).Once()
 
 		outcome, err := service.GetVerificationStatusByTwinID(ctx, 999)
 
-		assert.Nil(t, outcome)
-		var serviceErr *errors.ServiceError
-		require.ErrorAs(t, err, &serviceErr)
-		assert.Equal(t, errors.ErrorTypeExternal, serviceErr.Type)
+		require.NoError(t, err)
+		require.NotNil(t, outcome)
+		assert.Equal(t, models.OutcomeApproved, outcome.Outcome)
+		assert.Equal(t, "", outcome.ClientID)
+		substrateClient.AssertExpectations(t)
 	})
 
 	t.Run("disabled overrides always-verified-only mode", func(t *testing.T) {
@@ -179,6 +180,18 @@ func TestEnabledModeReadsStoredVerification(t *testing.T) {
 		require.NotNil(t, outcome)
 		assert.Equal(t, models.OutcomeApproved, outcome.Outcome)
 		verificationRepo.AssertExpectations(t)
+	})
+
+	t.Run("twin lookup failure is still an error", func(t *testing.T) {
+		service, _, _, _, _, substrateClient := setupKYCService(t)
+		substrateClient.On("GetAddressByTwinID", uint32(999)).Return("", fmt.Errorf("chain unavailable")).Once()
+
+		outcome, err := service.GetVerificationStatusByTwinID(ctx, 999)
+
+		assert.Nil(t, outcome)
+		var serviceErr *errors.ServiceError
+		require.ErrorAs(t, err, &serviceErr)
+		assert.Equal(t, errors.ErrorTypeExternal, serviceErr.Type)
 	})
 
 	t.Run("client with no record and no sponsor is not verified", func(t *testing.T) {

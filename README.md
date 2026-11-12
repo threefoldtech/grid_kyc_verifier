@@ -101,7 +101,7 @@ The application uses environment variables for configuration. Here is a list of 
 - `VERIFICATION_ALWAYS_VERIFIED_IDS`: Comma-separated list of Ledger Chain SS58 addresses that are always verified (default: `""`)
 - `VERIFICATION_ALWAYS_VERIFIED_IDS_ONLY`: When true, creation of KYC tokens is disabled on this network (default: `false`)
 - `VERIFICATION_DISABLED`: Switches KYC off when the verification provider is unavailable (default: `false`). While it is `true`:
-  - `GET /api/v1/status` answers `VERIFIED` with `final: true` for any `client_id`, without a database lookup. The `twin_id` form still resolves the twin on TFChain first, so an unknown twin or a chain outage still returns an error.
+  - `GET /api/v1/status` answers `VERIFIED` with `final: true` for any `client_id`, without a database lookup. The `twin_id` form resolves the twin on TFChain to fill in `clientId`; if that lookup fails it still answers `VERIFIED`, with an empty `clientId`, so a chain problem cannot block deployments.
   - `POST /api/v1/token` answers `409 user already verified` and starts no provider session.
   - `GET /api/v1/data` and the sponsorship endpoints work as before: `/data` returns the caller's stored record or `404`, and only a sponsor with a stored approved verification can sponsor.
   - The provider webhooks are still accepted, and the service still needs MongoDB, TFChain and the `IDENFY_*` settings to start.
