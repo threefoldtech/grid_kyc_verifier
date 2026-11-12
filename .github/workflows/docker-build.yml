@@ -7,7 +7,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Pinned: the repository was renamed from tf-kyc-verifier, and deployments
+  # pull ghcr.io/threefoldtech/tf-kyc-verifier. Deriving the name from
+  # github.repository would publish to a new, empty package instead.
+  IMAGE_NAME: threefoldtech/tf-kyc-verifier
 
 jobs:
   build-and-push:
