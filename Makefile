@@ -1,6 +1,6 @@
 # Variables
 APP_NAME := tfkycv
-IMAGE_NAME := ghcr.io/threefoldtech/tf-kyc-verifier
+IMAGE_NAME := ghcr.io/threefoldtech/grid_kyc_verifier
 MAIN_PATH := cmd/api/main.go
 SWAGGER_GENERAL_API_INFO_PATH := internal/handlers/handlers.go
 DOCKER_COMPOSE := docker compose

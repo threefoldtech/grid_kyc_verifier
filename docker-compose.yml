@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: tf_kyc_api
-    image: ghcr.io/threefoldtech/tf-kyc-verifier:latest
+    image: ghcr.io/threefoldtech/grid_kyc_verifier:latest
     restart: unless-stopped
     ports:
       - "8080:8080"
