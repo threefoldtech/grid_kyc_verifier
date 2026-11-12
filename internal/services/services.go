@@ -155,12 +155,22 @@ func (s *KYCService) AccountHasRequiredBalance(ctx context.Context, address stri
 // Verifications related methods
 // -----------------------------
 func (s *KYCService) GetVerificationData(ctx context.Context, clientID string) (*models.Verification, error) {
-	verification, err := s.verificationRepo.GetVerification(ctx, clientID)
-	if err != nil {
-		s.logger.Error("Error getting verification from database", "clientID", clientID, "error", err)
-		return nil, errors.NewInternalError("getting verification from database", err)
-	}
-	return verification, nil
+	// KYC is disabled: return a minimal verified-shaped record for any client
+	// instead of the stored verification data.
+	final := true
+	overall := models.OverallApproved
+	s.logger.Info("KYC service is disabled: returning minimal verified record", "clientID", clientID)
+	return &models.Verification{
+		Final:    &final,
+		ClientID: clientID,
+		Status: models.Status{
+			Overall: &overall,
+		},
+		Data: models.PersonData{
+			DuplicateFaces:    []string{},
+			DuplicateDocFaces: []string{},
+		},
+	}, nil
 }
 
 func (s *KYCService) GetVerificationStatus(ctx context.Context, clientID string) (*models.VerificationOutcome, error) {
