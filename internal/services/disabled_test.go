@@ -113,22 +113,19 @@ func TestDisabledMode(t *testing.T) {
 		verificationRepo.AssertExpectations(t)
 	})
 
-	t.Run("data returns an empty record when there is none", func(t *testing.T) {
+	t.Run("data returns nothing when there is no stored record", func(t *testing.T) {
 		service, verificationRepo, _, _ := setup(t)
 		verificationRepo.On("GetVerification", ctx, testClientID).Return(nil, nil).Once()
 
 		verification, err := service.GetVerificationData(ctx, testClientID)
 
 		require.NoError(t, err)
-		require.NotNil(t, verification)
-		assert.Equal(t, testClientID, verification.ClientID)
-		assert.Nil(t, verification.Status.Overall)
-		assert.Equal(t, models.PersonData{DuplicateFaces: []string{}, DuplicateDocFaces: []string{}}, verification.Data)
+		assert.Nil(t, verification)
 		verificationRepo.AssertExpectations(t)
 	})
 
-	// The empty record served to clients must never count as a verification:
-	// a sponsor with no stored record is still refused.
+	// Being reported as verified does not make someone a sponsor: the sponsor
+	// check still needs a stored approved verification.
 	t.Run("sponsor without a stored verification is refused", func(t *testing.T) {
 		service, verificationRepo, _, _ := setup(t)
 		verificationRepo.On("GetVerification", ctx, testClientID).Return(nil, nil).Once()

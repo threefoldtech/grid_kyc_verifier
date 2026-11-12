@@ -71,6 +71,8 @@ func TestDisabledModeHTTP(t *testing.T) {
 		assert.Equal(t, "VERIFIED", r["status"])
 		assert.Equal(t, true, r["final"])
 		assert.Equal(t, httpClientID, r["clientId"])
+		// Grid Connect parses idenfyRef as a non-null String.
+		assert.Equal(t, "", r["idenfyRef"])
 	})
 
 	t.Run("status by twin_id is 200 VERIFIED", func(t *testing.T) {
@@ -86,14 +88,12 @@ func TestDisabledModeHTTP(t *testing.T) {
 		assert.Contains(t, body["error"], "user already verified")
 	})
 
-	t.Run("data with no stored record is 200 with empty fields", func(t *testing.T) {
+	// Unchanged from enabled mode: Grid Connect shows "No data available" on 404.
+	t.Run("data with no stored record is 404", func(t *testing.T) {
 		verificationRepo.On("GetVerification", mock.Anything, httpClientID).Return(nil, nil).Once()
 		code, body := do(t, "GET", "/api/v1/data")
-		assert.Equal(t, fiber.StatusOK, code)
-		r := result(t, body)
-		assert.Equal(t, httpClientID, r["clientId"])
-		assert.Equal(t, "", r["docFirstName"])
-		assert.Equal(t, []any{}, r["duplicateFaces"])
+		assert.Equal(t, fiber.StatusNotFound, code)
+		assert.Contains(t, body["error"], "verification not found")
 	})
 
 	t.Run("data with a stored record returns it", func(t *testing.T) {

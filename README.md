@@ -103,8 +103,7 @@ The application uses environment variables for configuration. Here is a list of 
 - `VERIFICATION_DISABLED`: Switches KYC off when the verification provider is unavailable (default: `false`). While it is `true`:
   - `GET /api/v1/status` answers `VERIFIED` with `final: true` for any `client_id`, without a database lookup. The `twin_id` form still resolves the twin on TFChain first, so an unknown twin or a chain outage still returns an error.
   - `POST /api/v1/token` answers `409 user already verified` and starts no provider session.
-  - `GET /api/v1/data` returns the caller's stored record if there is one, and otherwise an empty record (blank fields, the caller's `clientId`) instead of `404`.
-  - Sponsorships work as before: only a sponsor with a stored approved verification can sponsor.
+  - `GET /api/v1/data` and the sponsorship endpoints work as before: `/data` returns the caller's stored record or `404`, and only a sponsor with a stored approved verification can sponsor.
   - The provider webhooks are still accepted, and the service still needs MongoDB, TFChain and the `IDENFY_*` settings to start.
 
   Stored records are kept and are used again once the flag is turned off. Consumers that cached a `final: true` answer given while it was on should check again after it is turned off.
