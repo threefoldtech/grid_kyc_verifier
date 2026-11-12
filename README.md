@@ -51,7 +51,7 @@ This repository is owned and maintained by TF-Tech NV, a Belgian company respons
 1. Clone the repository:
 
     ```bash
-    git clone https://github.com/threefoldtech/tf-kyc-verifier.git
+    git clone https://github.com/threefoldtech/grid_kyc_verifier.git
     cd grid_kyc_verifier
     ```
 

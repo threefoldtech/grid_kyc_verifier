@@ -7,10 +7,12 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Pinned: the repository was renamed from tf-kyc-verifier, and deployments
-  # pull ghcr.io/threefoldtech/tf-kyc-verifier. Deriving the name from
-  # github.repository would publish to a new, empty package instead.
-  IMAGE_NAME: threefoldtech/tf-kyc-verifier
+  # Every image is published under both names while deployments move over.
+  # The repository was renamed from tf-kyc-verifier to grid_kyc_verifier;
+  # existing deployments pull ghcr.io/threefoldtech/tf-kyc-verifier, new ones
+  # should use ghcr.io/threefoldtech/grid_kyc_verifier. Drop the old name once
+  # nothing pulls it any more.
+  IMAGE_NAMES: threefoldtech/tf-kyc-verifier threefoldtech/grid_kyc_verifier
 
 jobs:
   build-and-push:
@@ -37,18 +39,28 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Only the labels are used; the tags come from the next step.
+          images: ${{ env.REGISTRY }}/threefoldtech/grid_kyc_verifier
 
       - name: Generate tags
         id: tags
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "$EVENT_NAME" = "release" ]; then
             VERSION=${GITHUB_REF#refs/tags/}
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+            SUFFIXES="${VERSION} latest"
           else
             SHA=$(git rev-parse --short HEAD)
-            echo "tags=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge-${SHA},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge-latest" >> $GITHUB_OUTPUT
+            SUFFIXES="edge-${SHA} edge-latest"
           fi
+          TAGS=""
+          for image in $IMAGE_NAMES; do
+            for suffix in $SUFFIXES; do
+              TAGS="${TAGS:+$TAGS,}${REGISTRY}/${image}:${suffix}"
+            done
+          done
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
