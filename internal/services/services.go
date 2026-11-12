@@ -39,7 +39,7 @@ func NewKYCService(verificationRepo repository.VerificationRepository, tokenRepo
 		return nil, fmt.Errorf("getting idenfy suffix: %w", err)
 	}
 	if config.Verification.Disabled {
-		logger.Warn("KYC is disabled (VERIFICATION_DISABLED=true): all clients are reported as verified, no verification sessions are started, and new sponsorships are refused")
+		logger.Warn("KYC is disabled (VERIFICATION_DISABLED=true): all clients are reported as verified and no verification sessions are started")
 	}
 	return &KYCService{
 		verificationRepo: verificationRepo,
@@ -158,10 +158,15 @@ func (s *KYCService) AccountHasRequiredBalance(ctx context.Context, address stri
 // -----------------------------
 // Verifications related methods
 // -----------------------------
-// GetVerificationData returns the verification data to show to the client itself.
-// While KYC is disabled it returns an empty record instead of the stored data.
+// GetVerificationData returns the caller's own verification data. While KYC is
+// disabled, a client with no stored record gets an empty one instead of a 404,
+// so consumers that read it keep working.
 func (s *KYCService) GetVerificationData(ctx context.Context, clientID string) (*models.Verification, error) {
-	if s.config.Disabled {
+	verification, err := s.getStoredVerification(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if verification == nil && s.config.Disabled {
 		s.logger.Debug("KYC is disabled: returning empty verification record", "clientID", clientID)
 		final := true
 		return &models.Verification{
@@ -173,7 +178,7 @@ func (s *KYCService) GetVerificationData(ctx context.Context, clientID string) (
 			},
 		}, nil
 	}
-	return s.getStoredVerification(ctx, clientID)
+	return verification, nil
 }
 
 // getStoredVerification reads the stored verification record. Decisions about
@@ -361,12 +366,8 @@ func (s *KYCService) getVerificationOutcome(ctx context.Context, clientID string
 // -----------------------------
 // CreateSponsorship creates a new sponsorship between a sponsor and sponsee
 func (s *KYCService) CreateSponsorship(ctx context.Context, sponsorClientID, sponseeClientID string) (*models.Sponsorship, error) {
-	// While KYC is disabled nobody can be checked as a sponsor, so refuse rather
-	// than store sponsorships that would outlive the outage.
-	if s.config.Disabled {
-		return nil, errors.NewForbiddenError("KYC is disabled: new sponsorships are not accepted", nil)
-	}
-	// Check if sponsor is directly KYC-verified
+	// Check if sponsor is directly KYC-verified. This reads the stored record,
+	// so it works the same whether or not KYC is disabled.
 	sponsorVerification, err := s.getStoredVerification(ctx, sponsorClientID)
 	if err != nil {
 		return nil, fmt.Errorf("checking sponsor verification status: %w", err)
