@@ -85,6 +85,10 @@ type Verification struct {
 	MinBalanceToVerifyAccount     uint64   `env:"VERIFICATION_MIN_BALANCE_TO_VERIFY_ACCOUNT" env-default:"10000000"`
 	AlwaysVerifiedIDs             []string `env:"VERIFICATION_ALWAYS_VERIFIED_IDS" env-separator:","`
 	AlwaysVerifiedIDsOnly         bool     `env:"VERIFICATION_ALWAYS_VERIFIED_IDS_ONLY" env-default:"false"`
+	// Disabled turns KYC off: every client is reported as verified and no new
+	// verification sessions start. Stored records are kept and used again when
+	// it is turned off.
+	Disabled bool `env:"VERIFICATION_DISABLED" env-default:"false"`
 }
 type IPLimiter struct {
 	MaxTokenRequests uint `env:"IP_LIMITER_MAX_TOKEN_REQUESTS" env-default:"4"`

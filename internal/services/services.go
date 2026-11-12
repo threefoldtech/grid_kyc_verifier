@@ -38,6 +38,9 @@ func NewKYCService(verificationRepo repository.VerificationRepository, tokenRepo
 	if err != nil {
 		return nil, fmt.Errorf("getting idenfy suffix: %w", err)
 	}
+	if config.Verification.Disabled {
+		logger.Warn("KYC is disabled (VERIFICATION_DISABLED=true): all clients are reported as verified and no verification sessions are started")
+	}
 	return &KYCService{
 		verificationRepo: verificationRepo,
 		tokenRepo:        tokenRepo,
@@ -165,6 +168,15 @@ func (s *KYCService) GetVerificationData(ctx context.Context, clientID string) (
 }
 
 func (s *KYCService) GetVerificationStatus(ctx context.Context, clientID string) (*models.VerificationOutcome, error) {
+	if s.config.Disabled {
+		s.logger.Debug("KYC is disabled: reporting client as verified", "clientID", clientID)
+		final := true
+		return &models.VerificationOutcome{
+			Final:    &final,
+			ClientID: clientID,
+			Outcome:  models.OutcomeApproved,
+		}, nil
+	}
 	// check first if the clientID is in alwaysVerifiedAddresses
 	if s.config.AlwaysVerifiedIDs != nil && slices.Contains(s.config.AlwaysVerifiedIDs, clientID) {
 		final := true
@@ -274,8 +286,13 @@ func (s *KYCService) processClientID(clientID string) (string, error) {
 	return strippedClientID, nil
 }
 
-// IsUserVerified checks if a user is directly KYC-verified
+// IsUserVerified checks if a user is directly KYC-verified. While KYC is
+// disabled every user counts as verified, so no new verification session starts.
 func (s *KYCService) IsUserVerified(ctx context.Context, clientID string) (bool, error) {
+	if s.config.Disabled {
+		s.logger.Debug("KYC is disabled: treating user as verified", "clientID", clientID)
+		return true, nil
+	}
 	verification, err := s.getVerificationOutcome(ctx, clientID)
 	if err != nil {
 		return false, err
