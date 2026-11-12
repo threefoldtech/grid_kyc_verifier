@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,6 +37,9 @@ func NewKYCService(verificationRepo repository.VerificationRepository, tokenRepo
 	idenfySuffix, err := GetIdenfySuffix(substrateClient, config)
 	if err != nil {
 		return nil, fmt.Errorf("getting idenfy suffix: %w", err)
+	}
+	if config.Verification.Disabled {
+		logger.Warn("KYC is disabled (VERIFICATION_DISABLED=true): all clients are reported as verified, no verification sessions are started, and new sponsorships are refused")
 	}
 	return &KYCService{
 		verificationRepo: verificationRepo,
@@ -154,36 +158,68 @@ func (s *KYCService) AccountHasRequiredBalance(ctx context.Context, address stri
 // -----------------------------
 // Verifications related methods
 // -----------------------------
+// GetVerificationData returns the verification data to show to the client itself.
+// While KYC is disabled it returns an empty record instead of the stored data.
 func (s *KYCService) GetVerificationData(ctx context.Context, clientID string) (*models.Verification, error) {
-	// KYC is disabled: return a minimal verified-shaped record for any client
-	// instead of the stored verification data.
-	final := true
-	overall := models.OverallApproved
-	s.logger.Info("KYC service is disabled: returning minimal verified record", "clientID", clientID)
-	return &models.Verification{
-		Final:    &final,
-		ClientID: clientID,
-		Status: models.Status{
-			Overall: &overall,
-		},
-		Data: models.PersonData{
-			DuplicateFaces:    []string{},
-			DuplicateDocFaces: []string{},
-		},
-	}, nil
+	if s.config.Disabled {
+		s.logger.Debug("KYC is disabled: returning empty verification record", "clientID", clientID)
+		final := true
+		return &models.Verification{
+			Final:    &final,
+			ClientID: clientID,
+			Data: models.PersonData{
+				DuplicateFaces:    []string{},
+				DuplicateDocFaces: []string{},
+			},
+		}, nil
+	}
+	return s.getStoredVerification(ctx, clientID)
+}
+
+// getStoredVerification reads the stored verification record. Decisions about
+// verification status must use this, never the client-facing GetVerificationData.
+func (s *KYCService) getStoredVerification(ctx context.Context, clientID string) (*models.Verification, error) {
+	verification, err := s.verificationRepo.GetVerification(ctx, clientID)
+	if err != nil {
+		s.logger.Error("Error getting verification from database", "clientID", clientID, "error", err)
+		return nil, errors.NewInternalError("getting verification from database", err)
+	}
+	return verification, nil
 }
 
 func (s *KYCService) GetVerificationStatus(ctx context.Context, clientID string) (*models.VerificationOutcome, error) {
-	// KYC is disabled: report every client as verified without checking the database,
-	// sponsorships, or the verification provider.
-	final := true
-	s.logger.Info("KYC service is disabled: reporting client as verified", "clientID", clientID)
-	return &models.VerificationOutcome{
-		Final:     &final,
-		ClientID:  clientID,
-		IdenfyRef: "",
-		Outcome:   models.OutcomeApproved,
-	}, nil
+	if s.config.Disabled {
+		s.logger.Debug("KYC is disabled: reporting client as verified", "clientID", clientID)
+		final := true
+		return &models.VerificationOutcome{
+			Final:    &final,
+			ClientID: clientID,
+			Outcome:  models.OutcomeApproved,
+		}, nil
+	}
+	// check first if the clientID is in alwaysVerifiedAddresses
+	if s.config.AlwaysVerifiedIDs != nil && slices.Contains(s.config.AlwaysVerifiedIDs, clientID) {
+		final := true
+		s.logger.Info("ClientID is in always verified addresses. skipping verification", "clientID", clientID)
+		return &models.VerificationOutcome{
+			Final:     &final,
+			ClientID:  clientID,
+			IdenfyRef: "",
+			Outcome:   models.OutcomeApproved,
+		}, nil
+	}
+	if s.config.AlwaysVerifiedIDsOnly {
+		return nil, nil
+	}
+	verification, err := s.getVerificationOutcome(ctx, clientID)
+	if err != nil {
+		s.logger.Error("Error getting verification from database", "clientID", clientID, "error", err)
+		return nil, err
+	}
+	if verification == nil {
+		return nil, nil
+	}
+	return verification, nil
 }
 
 func (s *KYCService) GetVerificationStatusByTwinID(ctx context.Context, twinID uint32) (*models.VerificationOutcome, error) {
@@ -271,10 +307,53 @@ func (s *KYCService) processClientID(clientID string) (string, error) {
 }
 
 // IsUserVerified checks if a user is directly KYC-verified
+// While KYC is disabled every user counts as verified, so no new verification
+// session is started.
 func (s *KYCService) IsUserVerified(ctx context.Context, clientID string) (bool, error) {
-	// KYC is disabled: treat every user as verified so no new verification flows start.
-	s.logger.Info("KYC service is disabled: treating user as verified", "clientID", clientID)
-	return true, nil
+	if s.config.Disabled {
+		s.logger.Debug("KYC is disabled: treating user as verified", "clientID", clientID)
+		return true, nil
+	}
+	verification, err := s.getVerificationOutcome(ctx, clientID)
+	if err != nil {
+		return false, err
+	}
+	if verification == nil {
+		return false, nil
+	}
+	return verification.Outcome == models.OutcomeApproved, nil
+}
+
+func (s *KYCService) getVerificationOutcome(ctx context.Context, clientID string) (*models.VerificationOutcome, error) {
+	verification, err := s.getStoredVerification(ctx, clientID)
+	if err != nil {
+		return nil, err
+	}
+	if verification == nil {
+		// does user have a sponsorship?
+		sponsorship, err := s.sponsorshipRepo.GetBySponsee(ctx, clientID)
+		if err != nil {
+			s.logger.Error("Error checking sponsorship for user", "clientID", clientID, "error", err)
+			return nil, errors.NewInternalError("checking sponsorship for user", err)
+		}
+		if sponsorship != nil {
+			// User is sponsored, check if the sponsor is verified
+			sponsorVerification, err := s.getStoredVerification(ctx, sponsorship.SponsorClientID)
+			if err != nil {
+				s.logger.Error("Error checking sponsor verification status", "sponsorClientID", sponsorship.SponsorClientID, "error", err)
+				return nil, errors.NewInternalError("checking sponsor verification status", err)
+			}
+			if sponsorVerification != nil {
+				// return the verification outcome of the sponsor
+				return sponsorVerification.ToOutcome(*s.config), nil
+			}
+			s.logger.Warn("User is sponsored by an unverified sponsor", "sponseeClientID", clientID, "sponsorClientID", sponsorship.SponsorClientID)
+			return nil, nil // User is sponsored by an unverified sponsor
+		}
+		return nil, nil // User is not sponsored
+	}
+
+	return verification.ToOutcome(*s.config), nil
 }
 
 // -----------------------------
@@ -282,8 +361,13 @@ func (s *KYCService) IsUserVerified(ctx context.Context, clientID string) (bool,
 // -----------------------------
 // CreateSponsorship creates a new sponsorship between a sponsor and sponsee
 func (s *KYCService) CreateSponsorship(ctx context.Context, sponsorClientID, sponseeClientID string) (*models.Sponsorship, error) {
+	// While KYC is disabled nobody can be checked as a sponsor, so refuse rather
+	// than store sponsorships that would outlive the outage.
+	if s.config.Disabled {
+		return nil, errors.NewForbiddenError("KYC is disabled: new sponsorships are not accepted", nil)
+	}
 	// Check if sponsor is directly KYC-verified
-	sponsorVerification, err := s.GetVerificationData(ctx, sponsorClientID)
+	sponsorVerification, err := s.getStoredVerification(ctx, sponsorClientID)
 	if err != nil {
 		return nil, fmt.Errorf("checking sponsor verification status: %w", err)
 	}

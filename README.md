@@ -100,6 +100,7 @@ The application uses environment variables for configuration. Here is a list of 
 - `VERIFICATION_MIN_BALANCE_TO_VERIFY_ACCOUNT`: Minimum balance in uTFT required to verify an account (default: `10000000`)
 - `VERIFICATION_ALWAYS_VERIFIED_IDS`: Comma-separated list of Ledger Chain SS58 addresses that are always verified (default: `""`)
 - `VERIFICATION_ALWAYS_VERIFIED_IDS_ONLY`: When true, creation of KYC tokens is disabled on this network (default: `false`)
+- `VERIFICATION_DISABLED`: When true, KYC is switched off. `GET /api/v1/status` reports every client as verified, `POST /api/v1/token` answers `409 user already verified` without starting a provider session, `GET /api/v1/data` returns an empty record instead of stored data, and `POST /api/v1/sponsorships` answers `403`. Stored records are left in the database and are used again when the flag is turned off (default: `false`)
 
 ### Rate limiting
 
